@@ -46,6 +46,23 @@ DOCUMENTAÇÃO DE MUDANÇAS:
    - Separa registros com CNPJs válidos dos inválidos
    - Salva CNPJs inválidos em arquivo separado com CNPJ, REG_ANS e RazaoSocial
    - MOTIVO: Rastreabilidade de dados problemáticos para auditoria/correção
+
+7. FUNÇÃO juntar_dados_com_operadoras():
+    - Passou a fazer join a partir do CSV consolidado (arquivo final de consolidar_dados_em_csv)
+    - Adiciona apenas as colunas RegistroANS, Modalidade e UF
+    - Garante preservar exatamente a mesma quantidade de linhas do consolidado
+    - Remove duplicatas de operadoras por CNPJ antes do join
+    - MOTIVO: Evitar multiplicação de linhas e garantir uma linha por empresa/trimestre no arquivo final
+    - Agora chama salvar_operadoras_duplicadas_com_inconsistencias() antes do join
+    - MOTIVO: Detectar e reportar CNPJs duplicados que possuem dados inconsistentes
+
+8. FUNÇÃO salvar_operadoras_duplicadas_com_inconsistencias():
+    - Identifica CNPJs que aparecem múltiplas vezes no cadastro de operadoras
+    - Verifica se os dados (RegistroANS, Modalidade, UF) divergem entre os registros
+    - Salva APENAS os CNPJs com inconsistência (não apenas duplicação)
+    - Colunas geradas dinamicamente: campo_Registro1, campo_Registro2, etc (marcadas com [INCONSISTENTE])
+    - Inclui colunas: CNPJ, dados com inconsistência, Colunas_Inconsistentes, Total_Registros
+    - MOTIVO: Rastreabilidade e auditoria de dados conflitantes no cadastro de operadoras
 """
 
 
@@ -506,4 +523,203 @@ def consolidar_dados_em_csv(dados_processados: list[dict], caminho_saida: str):
     except Exception as e:
         print(f"Erro ao consolidar dados em CSV: {e}")
 
+# Criar uma função para salvar operadoras com dados inconsistentes
+def salvar_operadoras_duplicadas_com_inconsistencias(df_operadoras: pd.DataFrame, caminho_saida: str):
+    """
+    Identifica CNPJs duplicados nas operadoras que possuem dados inconsistentes.
+    Salva apenas os casos onde os dados divergem (não apenas duplicação).
+    As colunas de inconsistência são incluídas dinamicamente para cada campo que diverge.
+    Args:
+        df_operadoras: DataFrame com dados das operadoras
+        caminho_saida: Caminho do arquivo para salvar operadoras com inconsistências
+    Returns:
+        Dicionário com estatísticas (total_cnpjs_duplicados, total_com_inconsistencia)
+    """
+    # Buscar colunas relevantes dinamicamente
+    coluna_registro = None
+    possiveis_nomes_registro = ['REGISTRO_OPERADORA', 'RegistroANS', 'REG_ANS', 'REGISTRO_ANS', 'CD_REGISTRO_ANS']
+    
+    for nome in possiveis_nomes_registro:
+        if nome in df_operadoras.columns:
+            coluna_registro = nome
+            break
+    
+    colunas_verificar = ['CNPJ', coluna_registro, 'Modalidade', 'UF']
+    
+    # Verificar se as colunas existem
+    colunas_faltantes = [col for col in colunas_verificar if col and col not in df_operadoras.columns]
+    if colunas_faltantes:
+        print(f"AVISO: Colunas não encontradas para verificação de inconsistências: {colunas_faltantes}")
+        return {'total_cnpjs_duplicados': 0, 'total_com_inconsistencia': 0}
+    
+    # Filtrar apenas as colunas que vamos usar
+    colunas_verificar = [col for col in colunas_verificar if col]
+    df_check = df_operadoras[colunas_verificar].copy()
+    
+    # Identificar CNPJs que aparecem mais de uma vez
+    cnpjs_duplicados = df_check[df_check.duplicated(subset=['CNPJ'], keep=False)].copy()
+    
+    if cnpjs_duplicados.empty:
+        print("Nenhum CNPJ duplicado encontrado nas operadoras.")
+        return {'total_cnpjs_duplicados': 0, 'total_com_inconsistencia': 0}
+    
+    # Agrupar por CNPJ e verificar inconsistências
+    inconsistencias = []
+    
+    for cnpj, grupo in cnpjs_duplicados.groupby('CNPJ'):
+        # Verificar cada coluna para detectar inconsistências
+        colunas_inconsistentes = []
+        
+        for col in colunas_verificar:
+            if col == 'CNPJ':
+                continue  # Não precisa verificar CNPJ pois é a chave de agrupamento
+            
+            valores_unicos = grupo[col].nunique()
+            if valores_unicos > 1:
+                colunas_inconsistentes.append(col)
+        
+        # Só incluir se houver inconsistência (não apenas duplicação)
+        if colunas_inconsistentes:
+            # Criar linha com informações do CNPJ e marcação de inconsistências
+            registro = {'CNPJ': cnpj}
+            
+            # OTIMIZAÇÃO: Converter para lista de dicts uma vez em vez de usar iterrows()
+            # iterrows() é O(n²), enquanto to_dict('records') é O(n)
+            grupo_records = grupo.to_dict('records')
+            
+            # Adicionar todos os dados dos registros duplicados
+            for idx, row_dict in enumerate(grupo_records, 1):
+                for col in colunas_verificar:
+                    if col != 'CNPJ':
+                        valor = row_dict.get(col)
+                        # Marcar colunas inconsistentes
+                        if col in colunas_inconsistentes:
+                            registro[f'{col}_Registro{idx}'] = f"{valor} [INCONSISTENTE]"
+                        else:
+                            registro[f'{col}_Registro{idx}'] = valor
+            
+            # Adicionar lista das colunas inconsistentes
+            registro['Colunas_Inconsistentes'] = ', '.join(colunas_inconsistentes)
+            registro['Total_Registros'] = len(grupo)
+            
+            inconsistencias.append(registro)
+    
+    # Salvar em arquivo se houver inconsistências
+    if inconsistencias:
+        df_inconsistencias = pd.DataFrame(inconsistencias)
+        df_inconsistencias.to_csv(caminho_saida, index=False, encoding='utf-8-sig', sep=';')
+        print(f"Total de CNPJs com inconsistências detectadas: {len(inconsistencias)}")
+        print(f"Operadoras com inconsistências salvas em: {caminho_saida}")
+    else:
+        print("Nenhuma inconsistência de dados encontrada (apenas duplicações com dados idênticos).")
+    
+    total_cnpjs_duplicados = cnpjs_duplicados['CNPJ'].nunique()
+    return {
+        'total_cnpjs_duplicados': total_cnpjs_duplicados,
+        'total_com_inconsistencia': len(inconsistencias)
+    }
 
+
+# Criar uma função para realizar um join entre o arquivo consolidado e os dados das operadoras
+# A função deve adicionar apenas RegistroANS, Modalidade e UF, mantendo exatamente a mesma quantidade de linhas
+# do arquivo consolidado
+def juntar_dados_com_operadoras(caminho_consolidado: str, df_operadoras: pd.DataFrame):
+    """
+    Realiza um join entre o arquivo consolidado de dados e os dados das operadoras.
+    Adiciona apenas RegistroANS, Modalidade e UF, mantendo exatamente a mesma quantidade de linhas
+    do arquivo consolidado.
+    Args:
+        caminho_consolidado: Caminho do arquivo CSV consolidado
+        df_operadoras: DataFrame com dados das operadoras
+    Returns:
+        None (salva o resultado em um novo arquivo CSV)
+    """
+    try:
+        # Ler o arquivo consolidado (já tem as linhas corretas, sem duplicatas)
+        df_dados = pd.read_csv(caminho_consolidado, encoding='utf-8-sig', sep=';', decimal=',')
+
+        # Guardar número de linhas original
+        num_linhas_original = len(df_dados)
+        print(f"Linhas do arquivo consolidado: {num_linhas_original}")
+
+        # Verificar se as colunas necessárias existem
+        if 'CNPJ' not in df_dados.columns:
+            raise KeyError("Coluna 'CNPJ' não encontrada no arquivo consolidado.")
+        if 'CNPJ' not in df_operadoras.columns:
+            raise KeyError("Coluna 'CNPJ' não encontrada nos dados das operadoras.")
+        
+        # Verificar inconsistências em operadoras ANTES de fazer o join
+        print("\nVerificando inconsistências em operadoras duplicadas...")
+        caminho_inconsistencias = caminho_consolidado.replace('.csv', '_operadoras_inconsistencias.csv')
+        stats = salvar_operadoras_duplicadas_com_inconsistencias(df_operadoras, caminho_inconsistencias)
+        if stats['total_com_inconsistencia'] > 0:
+            print(f"⚠️  AVISO: {stats['total_cnpjs_duplicados']} CNPJs duplicados, {stats['total_com_inconsistencia']} com inconsistências!")
+        print()
+        
+        # Buscar a coluna de RegistroANS nas operadoras
+        coluna_registro = None
+        possiveis_nomes = ['REGISTRO_OPERADORA', 'RegistroANS', 'REG_ANS', 'REGISTRO_ANS', 'CD_REGISTRO_ANS']
+        
+        for nome in possiveis_nomes:
+            if nome in df_operadoras.columns:
+                coluna_registro = nome
+                break
+        
+        if not coluna_registro:
+            raise KeyError(f"Coluna de RegistroANS não encontrada. Colunas disponíveis: {df_operadoras.columns.tolist()}")
+        
+        # Verificar se Modalidade e UF existem
+        if 'Modalidade' not in df_operadoras.columns:
+            raise KeyError("Coluna 'Modalidade' não encontrada nos dados das operadoras.")
+        if 'UF' not in df_operadoras.columns:
+            raise KeyError("Coluna 'UF' não encontrada nos dados das operadoras.")
+        
+        # Preparar DataFrame de operadoras: manter apenas um registro por CNPJ (o primeiro)
+        # para evitar duplicatas no join
+        df_operadoras_unicas = df_operadoras.drop_duplicates(subset=['CNPJ'], keep='first').copy()
+        print(f"Registros únicos de operadoras (por CNPJ): {len(df_operadoras_unicas)}")
+        
+        # Selecionar apenas as colunas necessárias do DataFrame de operadoras
+        df_operadoras_filtradas = df_operadoras_unicas[['CNPJ', coluna_registro, 'Modalidade', 'UF']].copy()
+        df_operadoras_filtradas.rename(columns={coluna_registro: 'RegistroANS'}, inplace=True)
+
+        # Realizar o join usando CNPJ como chave
+        df_resultado = df_dados.merge(
+            df_operadoras_filtradas,
+            on='CNPJ',
+            how='left'  # Usar left join para manter todos os dados consolidados
+        )
+
+        # Preencher registros sem match no cadastro
+        colunas_match = ['RegistroANS', 'Modalidade', 'UF']
+        for coluna in colunas_match:
+            if coluna in df_resultado.columns:
+                df_resultado[coluna] = df_resultado[coluna].fillna("Registro sem match no cadastro")
+        
+        # Verificar se a quantidade de linhas foi preservada
+        num_linhas_resultado = len(df_resultado)
+        if num_linhas_resultado != num_linhas_original:
+            print(f"ERRO: Quantidade de linhas alterada durante o join!")
+            print(f"  Linhas esperadas: {num_linhas_original}")
+            print(f"  Linhas obtidas: {num_linhas_resultado}")
+            raise ValueError(f"Join produziu {num_linhas_resultado} linhas em vez de {num_linhas_original}")
+        
+        print(f"Join realizado com sucesso. Total de registros: {num_linhas_resultado}")
+        print(f"Colunas finais: {df_resultado.columns.tolist()}")
+        
+        # Salvar o resultado em um arquivo CSV para verificação
+        df_resultado.to_csv("dados_consolidados/dados_processados_com_operadoras.csv", index=False, encoding='utf-8-sig', sep=';', decimal=',')
+        print("Dados com operadoras salvos em: dados_consolidados/dados_processados_com_operadoras.csv")
+
+    except FileNotFoundError as e:
+        print(f"Erro: Arquivo não encontrado - {e}")
+        raise
+    except KeyError as e:
+        print(f"Erro ao realizar join: {e}")
+        raise
+    except ValueError as e:
+        print(f"Erro de validação: {e}")
+        raise
+    except Exception as e:
+        print(f"Erro ao realizar join entre dados consolidados e operadoras: {e}")
+        raise
