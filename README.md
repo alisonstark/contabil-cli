@@ -2,13 +2,13 @@
 
 Sistema de consolidação e análise de demonstrações contábeis de operadoras de planos de saúde no Brasil.
 
-## 📋 Descrição do Projeto
+## Descrição do Projeto
 
 Este projeto extrai, processa e consolida dados de demonstrações contábeis de operadoras de planos de saúde disponibilizados pela ANS (Agência Nacional de Saúde Suplementar), correlacionando-os com informações cadastrais das operadoras.
 
 O sistema baixa automaticamente os arquivos mais recentes (últimos 3 trimestres) do repositório de dados abertos da ANS, processa as despesas, valida CNPJs, identifica inconsistências e gera relatórios consolidados prontos para análise.
 
-## 🎯 Funcionalidades
+## Funcionalidades
 
 - ✅ Download automático de dados da ANS (FTP público)
 - ✅ Processamento de múltiplos formatos (CSV, TXT, XLSX)
@@ -18,7 +18,7 @@ O sistema baixa automaticamente os arquivos mais recentes (últimos 3 trimestres
 - ✅ Join estruturado com cadastro de operadoras
 - ✅ Geração de relatórios em formato brasileiro (sep=';', decimal=',')
 
-## 📊 Arquivos Gerados
+## Arquivos Gerados
 
 O sistema gera os seguintes arquivos na pasta `dados_consolidados/`:
 
@@ -28,7 +28,7 @@ O sistema gera os seguintes arquivos na pasta `dados_consolidados/`:
 4. **demonstracoes_contabeis_consolidadas_cnpjs_duplicados.csv** - CNPJs com múltiplas razões sociais
 5. **demonstracoes_contabeis_consolidadas_operadoras_inconsistencias.csv** - Operadoras com dados conflitantes
 
-## 🏗️ Estrutura do Projeto
+## Estrutura do Projeto
 
 ```
 contabil-cli/
@@ -39,7 +39,7 @@ contabil-cli/
 └── README.md                      # Documentação do projeto
 ```
 
-## 🚀 Como Executar
+## Como Executar
 
 ```powershell
 # Navegar até o diretório do projeto
@@ -49,7 +49,7 @@ cd "c:\Users\moonpie\Documents\Git Projects\contabil-cli"
 python src/main.py
 ```
 
-## 📚 Decisões de Arquitetura e Implementação
+## Decisões de Arquitetura e Implementação
 
 ### 1. Estratégia de Processamento: In-Memory vs Incremental
 
@@ -135,7 +135,7 @@ def validar_cnpj(cnpj: str) -> bool:
 ```
 
 **Resultados**:
-- 📄 `cnpjs_invalidos.csv`: CNPJs que falharam na validação
+- `cnpjs_invalidos.csv`: CNPJs que falharam na validação
 - Inclui: CNPJ, REG_ANS, RazaoSocial para rastreabilidade
 - Arquivo principal contém **apenas CNPJs válidos**
 
@@ -157,7 +157,7 @@ duplicados = df.groupby('CNPJ').filter(lambda x: x['RazaoSocial'].nunique() > 1)
 ```
 
 **Resultados**:
-- 📄 `cnpjs_duplicados.csv`: Pares de razões sociais diferentes para o mesmo CNPJ
+- `cnpjs_duplicados.csv`: Pares de razões sociais diferentes para o mesmo CNPJ
 
 #### 3.3 Operadoras com Dados Inconsistentes
 
@@ -181,7 +181,7 @@ df_operadoras_unicas = df_operadoras.drop_duplicates(subset=['CNPJ'], keep='firs
 ```
 
 **Resultados**:
-- 📄 `operadoras_inconsistencias.csv`: CNPJs com dados conflitantes no cadastro
+- `operadoras_inconsistencias.csv`: CNPJs com dados conflitantes no cadastro
 - Colunas marcadas com `[INCONSISTENTE]` para fácil identificação
 
 #### 3.4 Erros de Precisão de Ponto Flutuante
@@ -340,7 +340,7 @@ df.to_csv(
 )
 ```
 
-## 🔧 Tecnologias Utilizadas
+## Tecnologias Utilizadas
 
 - **Python 3.x**
 - **Pandas**: Manipulação e análise de dados
@@ -349,13 +349,13 @@ df.to_csv(
 - **zipfile**: Extração de arquivos compactados
 - **tempfile**: Gerenciamento de arquivos temporários
 
-## 📦 Dependências
+## Dependências
 
 ```bash
 pip install pandas requests beautifulsoup4 openpyxl
 ```
 
-## 🎓 Lições Aprendidas
+## Lições Aprendidas
 
 1. **Sempre validar dados externos**: CNPJs inválidos e duplicatas são comuns em bases públicas
 2. **Busca dinâmica de colunas**: Hardcoded names quebram quando a fonte muda
@@ -364,7 +364,7 @@ pip install pandas requests beautifulsoup4 openpyxl
 5. **Processamento incremental**: Reduz pico de memória sem sacrificar performance
 6. **Separação de responsabilidades**: `main.py` (orquestração) vs `processamento_dados.py` (lógica)
 
-## 🐛 Tratamento de Erros
+## Tratamento de Erros
 
 O sistema implementa múltiplas camadas de validação:
 
@@ -374,21 +374,17 @@ O sistema implementa múltiplas camadas de validação:
 - ✅ Verificação de integridade após joins
 - ✅ Mensagens de debug detalhadas em cada etapa
 
-## 📈 Próximos Passos
+## Escopo atual e próximos passos
 
-- [ ] Adicionar testes unitários (pytest)
-- [ ] Implementar logging estruturado (logging module)
-- [ ] Criar CLI com argumentos (argparse)
+Os testes de **Banco de Dados e Análise** e **API e Interface Web** não foram implementados nesta entrega.
 
-## 📄 Licença
+A decisão foi consciente e técnica: optei por não desenvolver soluções em áreas nas quais ainda não possuo base prática suficiente para garantir um resultado correto, sustentável e defensável em uma avaliação técnica.
 
-Este projeto foi desenvolvido para fins educacionais e de análise de dados públicos.
-
-## 👤 Autor
-
-**moonpie**  
-Projeto: contabil-cli  
-Data: Janeiro 2026
+O foco deste repositório foi entregar uma solução **robusta, funcional e bem estruturada** para os testes de coleta, normalização, consolidação e análise de dados públicos da ANS, priorizando:
+- qualidade de dados,
+- rastreabilidade,
+- tratamento de inconsistências reais,
+- clareza de código e documentação.
 
 ---
 
