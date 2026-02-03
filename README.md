@@ -18,7 +18,7 @@ O sistema foi projetado para lidar com **dados reais e inconsistentes**, prioriz
 - clareza de código e documentação.
 
 > **Não foram implementados nesta entrega:**  
-> Banco de dados e API / Interface Web.
+> Banco de dados e API / Interface Web. Mais detalhes na seção Notas, ao final deste arquivo.
 
 **Leitura recomendada para avaliadores:**
 - O que o sistema faz  
@@ -149,55 +149,6 @@ CNPJ | Trimestre | ValorDespesas | MediaTrimestral
 - `ValorDespesas`: Soma (100+200 = 300)
 - `MediaTrimestral`: Média (300/2 = 150)
 
-### 6. Por que dois joins separados?
-
-**Etapa 1**: Join Despesas → Operadoras (por REG_ANS)
-- Adiciona CNPJ e Razão Social
-- Usa `inner join` (só mantém despesas de operadoras conhecidas)
-
-**Etapa 2**: Join Consolidado → Operadoras (por CNPJ)  
-- Adiciona RegistroANS, Modalidade, UF
-- Usa `left join` (mantém todas as linhas do consolidado)
-
-**Por que não fazer tudo de uma vez?**
-- Primeira chave é REG_ANS (tem nos dois datasets)
-- Segunda chave é CNPJ (só existe depois do primeiro join)
-- Separar evita perder dados e garante integridade
-
-## Resumo dos problemas encontrados e soluções
-
-### Problema 1: Arquivos temporários não eram deletados
-
-**Erro**: Sistema deixava arquivos `.csv` no diretório temporário do Windows.
-
-**Causa**: `tempfile.NamedTemporaryFile(delete=False)` não deleta automaticamente.
-
-**Solução**: Adicionei `os.unlink()` após usar o arquivo.
-
-### Problema 2: TemporaryDirectory deletava arquivos antes de processar
-
-**Erro**: Tentei processar arquivos fora do bloco `with`, mas eles já tinham sido deletados.
-
-**Causa**: `TemporaryDirectory` deleta tudo quando o bloco `with` termina.
-
-**Solução**: Movi o processamento **para dentro** do bloco `with`.
-
-### Problema 3: CNPJs duplicados com dados diferentes
-
-**Erro**: Mesmo CNPJ aparecia com múltiplas razões sociais.
-
-**Causa**: Erros de cadastro ou mudanças de nome não atualizadas.
-
-**Solução**: Salvei em arquivo separado para revisão manual, mas mantive todos os dados (rastreabilidade).
-
-### Problema 4: Join multiplicava linhas
-
-**Erro**: Join com operadoras criava linhas duplicadas.
-
-**Causa**: Havia CNPJs duplicados no cadastro de operadoras.
-
-**Solução**: Usei `drop_duplicates(subset=['CNPJ'], keep='first')` antes do join.
-
 ## Limitações conhecidas
 
 1. **Sem tratamento de quedas de conexão**: Se a internet cair durante download, o programa falha.
@@ -206,7 +157,45 @@ CNPJ | Trimestre | ValorDespesas | MediaTrimestral
 4. **Encoding fixo**: Assume `latin1` para CSVs (pode falhar com outros encodings).
 5. **Sem validação de valores**: Não verifica se despesas são positivas ou realistas.
 
-## Tecnologias usadas
+---
+
+## ANEXO A: Lições Aprendidas
+
+### Resumo dos problemas encontrados e soluções
+
+#### Problema 1: Arquivos temporários não eram deletados
+
+**Erro**: Sistema deixava arquivos `.csv` no diretório temporário do Windows.
+
+**Causa**: `tempfile.NamedTemporaryFile(delete=False)` não deleta automaticamente.
+
+**Solução**: Adicionei `os.unlink()` após usar o arquivo.
+
+#### Problema 2: TemporaryDirectory deletava arquivos antes de processar
+
+**Erro**: Tentei processar arquivos fora do bloco `with`, mas eles já tinham sido deletados.
+
+**Causa**: `TemporaryDirectory` deleta tudo quando o bloco `with` termina.
+
+**Solução**: Movi o processamento **para dentro** do bloco `with`.
+
+#### Problema 3: CNPJs duplicados com dados diferentes
+
+**Erro**: Mesmo CNPJ aparecia com múltiplas razões sociais.
+
+**Causa**: Erros de cadastro ou mudanças de nome não atualizadas.
+
+**Solução**: Salvei em arquivo separado para revisão manual, mas mantive todos os dados (rastreabilidade).
+
+#### Problema 4: Join multiplicava linhas
+
+**Erro**: Join com operadoras criava linhas duplicadas.
+
+**Causa**: Havia CNPJs duplicados no cadastro de operadoras.
+
+**Solução**: Usei `drop_duplicates(subset=['CNPJ'], keep='first')` antes do join.
+
+### Tecnologias usadas
 
 - **Python 3.11**
 - **Pandas**: Manipulação de dados
@@ -215,15 +204,20 @@ CNPJ | Trimestre | ValorDespesas | MediaTrimestral
 - **zipfile**: Extração de arquivos
 - **tempfile**: Gerenciamento de arquivos temporários
 
-## Aprendizados
+### Lições destacadas
 
-1. **Dados públicos são bagunçados**: Encontrei CNPJs inválidos, nomes diferentes, dados inconsistentes.
-2. **Busca dinâmica de colunas é essencial**: Hardcoded names quebram quando a fonte muda.
-3. **Agregação é importante**: Dados brutos raramente estão no formato ideal.
-4. **Processamento incremental funciona**: Não preciso de tudo em memória de uma vez.
-5. **Delete manual > delete automático**: `delete=False` com limpeza manual dá mais controle.
+1. **Sempre validar dados externos**: CNPJs inválidos e duplicatas são comuns em bases públicas
+2. **Busca dinâmica de colunas**: Hardcoded names quebram quando a fonte muda
+3. **Agregação é essencial**: Dados brutos raramente estão no formato ideal para análise
+4. **Performance importa**: `iterrows()` vs `.to_dict()` pode ser diferença de minutos vs segundos
+5. **Processamento incremental**: Reduz pico de memória sem sacrificar performance
+6. **Separação de responsabilidades**: `main.py` (orquestração) vs `processamento_dados.py` (lógica)
 
-## Testes realizados
+---
+
+## ANEXO B: Testes e Tratamentos
+
+### Testes realizados
 
 - ✅ Execução com dados reais dos últimos 3 trimestres
 - ✅ Validação de CNPJs (testei com CNPJs válidos e inválidos)
@@ -231,13 +225,9 @@ CNPJ | Trimestre | ValorDespesas | MediaTrimestral
 - ✅ Testes com diferentes formatos (CSV, XLSX), não encontrei um arquivo TXT
 - ✅ Verificação de arquivos gerados (todos os CSVs esperados foram criados)
 
-**Benefícios**:
-- ✅ Sistema continua funcionando mesmo com mudanças na nomenclatura da ANS
-- ✅ Mensagens de debug mostram colunas disponíveis quando algo falha
+### Tratamento de Inconsistências
 
-### 3. Tratamento de Inconsistências
-
-#### 3.1 CNPJs Inválidos
+#### CNPJs Inválidos
 
 **Decisão**: **Validar todos os CNPJs** com algoritmo de módulo 11 e **segregar inválidos** em arquivo separado.
 
@@ -251,7 +241,7 @@ CNPJ | Trimestre | ValorDespesas | MediaTrimestral
 - Inclui: CNPJ, REG_ANS, RazaoSocial para rastreabilidade
 - Arquivo principal contém **apenas CNPJs válidos**
 
-#### 3.2 CNPJs Duplicados com Razões Sociais Diferentes
+#### CNPJs Duplicados com Razões Sociais Diferentes
 
 **Problema**: Mesmo CNPJ pode aparecer com nomes diferentes (erro de cadastro, mudança de razão social, etc).
 
@@ -265,7 +255,7 @@ CNPJ | Trimestre | ValorDespesas | MediaTrimestral
 **Resultados**:
 - `cnpjs_duplicados.csv`: Pares de razões sociais diferentes para o mesmo CNPJ
 
-#### 3.3 Operadoras com Dados Inconsistentes
+#### Operadoras com Dados Inconsistentes
 
 **Problema**: Cadastro de operadoras pode ter CNPJs duplicados com RegistroANS, Modalidade ou UF diferentes.
 Em healthtech dados inconsistentes viram erro regulatório. Séria atenção aqui.
@@ -281,7 +271,7 @@ Em healthtech dados inconsistentes viram erro regulatório. Séria atenção aqu
 - `operadoras_inconsistencias.csv`: CNPJs com dados conflitantes no cadastro
 - Colunas marcadas com `[INCONSISTENTE]` para fácil identificação
 
-#### 3.4 Erros de Precisão de Ponto Flutuante
+#### Erros de Precisão de Ponto Flutuante
 
 **Problema**: Valores monetários podem ter erros como "759558,3999999994" devido à precisão float.
 
@@ -292,32 +282,16 @@ Em healthtech dados inconsistentes viram erro regulatório. Séria atenção aqu
 - Arredondamento elimina artefatos de precisão flutuante
 - Aplicado após conversão e após agregações
 
-### 4. Estratégia de Join
+#### Estratégia de Join
 
-**Problema**: Correlacionar despesas (por REG_ANS) com operadoras (CNPJ + cadastro).
+Para correlacionar despesas da ANS com dados cadastrais das operadoras, foi adotada uma **estratégia de join em duas etapas**:
 
-**Decisão**: **Join em duas etapas**:
-1. **Inner join** Despesas × Operadoras (por REG_ANS) → adiciona CNPJ
-2. **Left join** Consolidado × Operadoras (por CNPJ) → adiciona RegistroANS, Modalidade, UF
+- **Inner join por `REG_ANS`** para vincular despesas a operadoras válidas e obter o CNPJ.
+- **Left join por `CNPJ`** após a consolidação, preservando todas as linhas e evitando duplicações.
 
-**Justificativa**:
+Essa abordagem garante integridade referencial, evita multiplicação de registros e mantém o dataset final consistente.
 
-**Primeira etapa (Inner Join)**:
-- Garante que só processamos despesas de operadoras conhecidas
-- Adiciona CNPJ necessário para consolidação
-- Filtra dados órfãos (sem operadora correspondente)
-
-**Segunda etapa (Left Join)**:
-- Mantém **todas as linhas** do arquivo consolidado (sem multiplicação)
-- Adiciona apenas colunas necessárias: RegistroANS, Modalidade, UF
-- Registros sem match recebem "Registro sem match no cadastro"
-
-**Por que não um único join?**
-- Primeiro join é por REG_ANS (chave primária em despesas)
-- Segundo join é por CNPJ (chave única após consolidação)
-- Separação mantém integridade referencial e evita duplicatas
-
-### 5. Consolidação e Agregação
+#### Consolidação e Agregação
 
 **Problema**: Empresas podem ter múltiplas despesas no mesmo trimestre (diferentes tipos de despesa).
 
@@ -328,15 +302,15 @@ Em healthtech dados inconsistentes viram erro regulatório. Séria atenção aqu
 - Soma de despesas mantém total correto
 - Agregação no final (após validação) garante dados limpos
 
-### 6. Otimizações de Performance
+#### Otimizações de Performance
 
-#### 6.1 Substituição de iterrows() por to_dict('records')
+##### Substituição de iterrows() por to_dict('records')
 
 **Problema**: iterrows() tem overhead elevado em DataFrames grandes.
 
 **Decisão**: Optei por uma abordagem vetorizada com .to_dict('records'), mais adequada ao volume de dados esperado.
 
-#### 6.2 Download de Operadoras Uma Única Vez
+##### Download de Operadoras Uma Única Vez
 
 **Problema**: Baixar o mesmo arquivo de operadoras para cada trimestre é desperdício.
 
@@ -347,7 +321,7 @@ Em healthtech dados inconsistentes viram erro regulatório. Séria atenção aqu
 - Reduz tráfego de rede e tempo de execução
 - Memória usada: ~50MB (aceitável para 3 trimestres)
 
-### 7. Padrões Brasileiros
+#### Padrões Brasileiros
 
 **Decisão**: Usar **separador `;` e decimal `,`** em todos os CSVs.
 
@@ -357,7 +331,7 @@ Em healthtech dados inconsistentes viram erro regulatório. Séria atenção aqu
 - Facilita abertura direta por usuários finais
 - Encoding `utf-8-sig` para BOM (abre corretamente no Excel)
 
-### 8. Débito Técnico Consciente: Responsabilidades da Função `consolidar_dados_em_csv()`
+#### Débito Técnico Consciente: Responsabilidades da Função `consolidar_dados_em_csv()`
 
 A função `consolidar_dados_em_csv()` atualmente viola o **Single Responsibility Principle (SRP)**, executando múltiplas responsabilidades:
 
@@ -398,7 +372,7 @@ def consolidar_dados_em_csv(dados, caminho):
 
 **Trade-off aceito**: Acoplamento moderado em troca de simplicidade imediata e menor risco de bugs.
 
-### 9. Desvio Padrão: Por Que Sem Constraint Automático?
+#### Desvio Padrão: Por Que Sem Constraint Automático?
 
 **Decisão**: O arquivo `*_desvio_padrao.csv` é gerado **sem filtros automáticos** (sem threshold mínimo ou máximo).
 
@@ -408,11 +382,15 @@ def consolidar_dados_em_csv(dados, caminho):
    - DP baixo pode indicar: operadora estável ✅ ou dados incompletos ❌
    - DP alto pode indicar: fraude/anomalia ⚠️ ou crescimento legítimo ✅
 
-2. **Decisão manual é mais segura**: Em healthcare, decisões automáticas podem ter consequências regulatórias (ao meu entender)
-   - Eu (analista humano) devo decidir qual é o threshold apropriado, o que não tenho agora
+2. **Decisão manual é mais segura**: Em healthcare, decisões automáticas podem ter consequências regulatórias (ao meu humilde entender)
+   - Eu (analista humano) devo decidir qual é o threshold apropriado, o que foi definido apenas subjetivamente em projeto
    - Não deixo a máquina descartar dados automaticamente
 
-## Tecnologias Utilizadas
+---
+
+## ANEXO C: Tecnologias e Dependências
+
+### Tecnologias Utilizadas
 
 - **Python 3.11.x**
 - **Pandas**: Manipulação e análise de dados
@@ -421,33 +399,16 @@ def consolidar_dados_em_csv(dados, caminho):
 - **zipfile**: Extração de arquivos compactados
 - **tempfile**: Gerenciamento de arquivos temporários
 
-## Dependências
+### Dependências
 
 ```bash
 pip install pandas requests beautifulsoup4 openpyxl
 ```
 
-## Lições Aprendidas
-
-1. **Sempre validar dados externos**: CNPJs inválidos e duplicatas são comuns em bases públicas
-2. **Busca dinâmica de colunas**: Hardcoded names quebram quando a fonte muda
-3. **Agregação é essencial**: Dados brutos raramente estão no formato ideal para análise
-4. **Performance importa**: `iterrows()` vs `.to_dict()` pode ser diferença de minutos vs segundos
-5. **Processamento incremental**: Reduz pico de memória sem sacrificar performance
-6. **Separação de responsabilidades**: `main.py` (orquestração) vs `processamento_dados.py` (lógica)
-
-## Tratamento de Erros
-
-O sistema implementa múltiplas camadas de validação:
-
-- ✅ Verificação de status HTTP (200) antes de processar
-- ✅ Try-except em todas as funções críticas (foi praticamente uma forma de debugar)
-- ✅ Validação de existência de colunas antes de usar
-- ✅ Verificação de integridade após joins
-- ✅ Mensagens de debug detalhadas em cada etapa
-
 ---
-Nota: A não implementação de **Banco de Dados e Análise** e **API e Interface Web** foi uma decisão consciente e técnica: optei por não desenvolver soluções em áreas nas quais ainda não possuo base prática suficiente 
+## Nota
+
+A não implementação de **Banco de Dados e Análise** e **API e Interface Web** foi uma decisão consciente e técnica: optei por não desenvolver soluções em áreas nas quais ainda não possuo base prática suficiente 
 para garantir um resultado correto, sustentável e defensável em uma possível avaliação técnica.
 
 Ainda assim, o projeto foi estruturado de forma a permitir evolução natural, com separação clara de responsabilidades, funções puras e pontos de integração bem definidos, o que viabilizaria: 
