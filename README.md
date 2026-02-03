@@ -8,7 +8,8 @@
 
 ## Resumo rápido
 
-Este projeto implementa os **Testes 1 e 2** do desafio técnico da Intuitive Care, com foco em **coleta, normalização, consolidação e análise de dados públicos da ANS** (Agência Nacional de Saúde Suplementar).
+Este projeto foi desenvolvido no contexto de um desafio técnico para uma empresa do setor de healthtech, utilizando exclusivamente dados públicos da ANS (Agência Nacional de Saúde Suplementar).
+Foram implementadas a **INTEGRAÇÃO COM API PÚBLICA** e a **TRANSFORMAÇÃO E VALIDAÇÃO DE DADOS**.
 
 O sistema foi projetado para lidar com **dados reais e inconsistentes**, priorizando:
 - qualidade de dados,
