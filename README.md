@@ -4,6 +4,30 @@
 **Data**: Fevereiro 2026  
 **Propósito**: Teste técnico para vaga de estágio
 
+---
+
+## Resumo rápido
+
+Este projeto implementa os **Testes 1 e 2** do desafio técnico da Intuitive Care, com foco em **coleta, normalização, consolidação e análise de dados públicos da ANS** (Agência Nacional de Saúde Suplementar).
+
+O sistema foi projetado para lidar com **dados reais e inconsistentes**, priorizando:
+- qualidade de dados,
+- rastreabilidade,
+- decisões técnicas justificadas,
+- clareza de código e documentação.
+
+> **Não foram implementados nesta entrega:**  
+> Banco de dados e API / Interface Web.
+
+**Leitura recomendada para avaliadores:**
+- O que o sistema faz  
+- Como executar  
+- Estrutura do projeto  
+- Decisões técnicas importantes
+- Limitações conhecidas  
+
+---
+
 ## O que o sistema faz
 
 Este projeto baixa, processa e consolida dados de demonstrações contábeis de operadoras de planos de saúde da ANS (Agência Nacional de Saúde Suplementar). 
@@ -89,14 +113,6 @@ contabil-cli/
 - Não realizei uma busca extensiva, mas pode haver outros nomes
 
 **Solução**: O código tenta múltiplos nomes possíveis até encontrar um que existe.
-
-```python
-possiveis_nomes = ['REGISTRO_OPERADORA', 'REG_ANS', 'CD_REGISTRO_ANS', ...]
-for nome in possiveis_nomes:
-    if nome in df.columns:
-        coluna_correta = nome
-        break
-```
 
 **Trade-off**:
 - ✅ Código funciona mesmo quando ANS muda nomes de colunas
