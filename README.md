@@ -578,17 +578,15 @@ O sistema implementa múltiplas camadas de validação:
 - ✅ Verificação de integridade após joins
 - ✅ Mensagens de debug detalhadas em cada etapa
 
-## Escopo atual e próximos passos
-
+---
 Os testes de **Banco de Dados e Análise** e **API e Interface Web** não foram implementados nesta entrega.
 
 A decisão foi consciente e técnica: optei por não desenvolver soluções em áreas nas quais ainda não possuo base prática suficiente para garantir um resultado correto, sustentável e defensável em uma possível avaliação técnica.
 
-O foco deste repositório foi entregar uma solução **robusta, funcional e bem estruturada** para os testes de coleta, normalização, consolidação e análise de dados públicos da ANS, priorizando:
-- qualidade de dados,
-- rastreabilidade,
-- tratamento de inconsistências reais,
-- clareza de código e documentação.
+Ainda assim, o projeto foi estruturado de forma a permitir evolução natural, com separação clara de responsabilidades, funções puras e pontos de integração bem definidos, o que viabilizaria: 
+persistência dos dados consolidados em um banco relacional (ex.: PostgreSQL), exposição dos dados finais via API REST, e posterior consumo por uma interface web.
+
+O foco desta entrega foi garantir uma base sólida de coleta, normalização e consolidação de dados públicos da ANS, priorizando qualidade de dados, rastreabilidade, tratamento de inconsistências reais e clareza de código e documentação.
 
 ---
 
