@@ -530,6 +530,20 @@ def consolidar_dados_em_csv(dados, caminho):
 
 **Trade-off aceito**: Acoplamento moderado em troca de simplicidade imediata e menor risco de bugs.
 
+### 9. Desvio Padrão: Por Que Sem Constraint Automático?
+
+**Decisão**: O arquivo `*_desvio_padrao.csv` é gerado **sem filtros automáticos** (sem threshold mínimo ou máximo).
+
+**Justificativa**:
+
+1. **Falta de contexto de negócio**: Não tenho informações sobre qual nível de volatilidade é "aceitável" para operadoras de plano de saúde
+   - DP baixo pode indicar: operadora estável ✅ ou dados incompletos ❌
+   - DP alto pode indicar: fraude/anomalia ⚠️ ou crescimento legítimo ✅
+
+2. **Decisão manual é mais segura**: Em healthcare, decisões automáticas podem ter consequências regulatórias (ao meu entender)
+   - Eu (analista humano) devo decidir qual é o threshold apropriado, o que não tenho agora
+   - Não deixo a máquina descartar dados automaticamente
+
 ## Tecnologias Utilizadas
 
 - **Python 3.11.x**
