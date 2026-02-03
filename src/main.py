@@ -1,3 +1,4 @@
+import os
 import re
 
 import requests
@@ -22,8 +23,8 @@ def main() -> None:
     cod_status = resp.status_code
 
     # Debug
-    print(f"Status Code: {cod_status}")
-    print(f"Response Text: {resp.text[:500]}")
+    # print(f"Status Code: {cod_status}")
+    # print(f"Response Text: {resp.text[:500]}")
 
     if cod_status != 200:
         print(f"Não foi possível acessar o diretório de demonstrações contábeis. Código de Status: {cod_status}")
@@ -59,10 +60,14 @@ def main() -> None:
     # Selecionar os últimos 3 trimestres
     arquivos_trimestres = sorted(arquivos, reverse=True)[:3]
 
-    # Baixar operadoras UMA VEZ antes do loop
+    # Baixar operadoras UMA VEZ antes do loop (tive que errar pra entender o básico)
     operadoras_url = "https://dadosabertos.ans.gov.br/FTP/PDA/operadoras_de_plano_de_saude_ativas/Relatorio_cadop.csv"
     caminho_operadoras = baixar_operadoras(operadoras_url)
     df_operadoras = pd.read_csv(caminho_operadoras, encoding='latin1', sep=';')
+
+    # Limpeza de memória: deletar arquivo temporário após criar o DataFrame
+    # isso evita manter arquivos desnecessários no disco
+    os.unlink(caminho_operadoras)
 
     # Debug
     print(f"Operadoras carregadas. Total de operadoras: {len(df_operadoras)}")

@@ -11,60 +11,7 @@ from bs4 import BeautifulSoup
 Funções auxiliares para processamento de dados de despesas e operadoras
 Decidi por separar essas funções em um módulo próprio para manter o main.py mais limpo
 e focado no fluxo principal do programa. Assim fica até mais fácil de manter e testar.
-
-DOCUMENTAÇÃO DE MUDANÇAS:
-
-1. FUNÇÃO ler_despesas():
-   - Adicionado .round(2) após pd.to_numeric() para eliminar erros de precisão de ponto flutuante
-   - Arredonda também a coluna DESPESA calculada
-   - MOTIVO: Valores monetários não devem ter mais de 2 casas decimais; evita erros como "759558,3999999994"
-
-2. FUNÇÃO correlacionar_despesas_com_operadoras():
-   - Adicionados parâmetros opcionais: trimestre e ano
-   - Adiciona automaticamente essas informações aos dicionários de resultado
-   - MOTIVO: Permitir rastreabilidade de quando cada despesa ocorreu
-
-3. FUNÇÃO consolidar_dados_em_csv():
-   - Adicionado groupby() para agrupar por CNPJ, RazaoSocial, Trimestre e Ano
-   - Soma todas as despesas para cada combinação (agregação)
-   - MOTIVO: Eliminar duplicatas da mesma empresa no mesmo trimestre (múltiplos gastos → um total)
-   - Alterado separador CSV para ';' (padrão brasileiro) e decimal para ','
-   - MOTIVO: Compatibilidade com Excel em português
-   - Adicionada validação de CNPJs antes de consolidar dados
-   - MOTIVO: Garantir integridade dos dados no arquivo final
-
-4. FUNÇÃO salvar_cnpjs_duplicados():
-   - Alterado separador CSV para ';' e decimal para ',' (padrão brasileiro)
-   - MOTIVO: Consistência com o arquivo principal
-
-5. FUNÇÃO validar_cnpj():
-   - Implementa algoritmo de validação de CNPJ (módulo 11)
-   - Verifica formato (14 dígitos) e calcula dígitos verificadores
-   - MOTIVO: Garantir integridade dos dados; CNPJs inválidos podem indicar problemas na fonte
-
-6. FUNÇÃO filtrar_cnpjs_invalidos():
-   - Separa registros com CNPJs válidos dos inválidos
-   - Salva CNPJs inválidos em arquivo separado com CNPJ, REG_ANS e RazaoSocial
-   - MOTIVO: Rastreabilidade de dados problemáticos para auditoria/correção
-
-7. FUNÇÃO juntar_dados_com_operadoras():
-    - Passou a fazer join a partir do CSV consolidado (arquivo final de consolidar_dados_em_csv)
-    - Adiciona apenas as colunas RegistroANS, Modalidade e UF
-    - Garante preservar exatamente a mesma quantidade de linhas do consolidado
-    - Remove duplicatas de operadoras por CNPJ antes do join
-    - MOTIVO: Evitar multiplicação de linhas e garantir uma linha por empresa/trimestre no arquivo final
-    - Agora chama salvar_operadoras_duplicadas_com_inconsistencias() antes do join
-    - MOTIVO: Detectar e reportar CNPJs duplicados que possuem dados inconsistentes
-
-8. FUNÇÃO salvar_operadoras_duplicadas_com_inconsistencias():
-    - Identifica CNPJs que aparecem múltiplas vezes no cadastro de operadoras
-    - Verifica se os dados (RegistroANS, Modalidade, UF) divergem entre os registros
-    - Salva APENAS os CNPJs com inconsistência (não apenas duplicação)
-    - Colunas geradas dinamicamente: campo_Registro1, campo_Registro2, etc (marcadas com [INCONSISTENTE])
-    - Inclui colunas: CNPJ, dados com inconsistência, Colunas_Inconsistentes, Total_Registros
-    - MOTIVO: Rastreabilidade e auditoria de dados conflitantes no cadastro de operadoras
 """
-
 
 def validar_cnpj(cnpj: str) -> bool:
     """
@@ -87,7 +34,7 @@ def validar_cnpj(cnpj: str) -> bool:
     
     # Calcula primeiro dígito verificador
     soma = 0
-    peso = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    peso = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] # pesos oficiais do CNPJ (da esquerda para a direita)
     for i in range(12):
         soma += int(cnpj_numeros[i]) * peso[i]
     
@@ -166,21 +113,21 @@ def extrair_anos_disponiveis(html_text) -> list[int]:
     """
 
     # Parse o HTML usando BeautifulSoup
-    soup = BeautifulSoup(html_text, 'html.parser')
+    soup = BeautifulSoup(html_text, 'html.parser') # Resultado da operação é um objeto BeautifulSoup
 
     # Encontrar todos os links que são diretórios de anos (formato: 2XXX/)
-    links = soup.find_all('a', href=True)
+    links = soup.find_all('a', href=True) # Encontrar todos os links com atributo href
     anos = []
 
     for link in links:
-        href = link['href']
+        href = link['href'] # Extrair valor do atributo href
 
         # Extrair anos que seguem o padrão 2XXX/
         match = re.match(r'^(20\d{2})/$', href)
         if match:
-            anos.append(int(match.group(1)))
+            anos.append(int(match.group(1)))    # .group(1) pega o primeiro grupo capturado na regex
 
-    return anos
+    return anos # Retorna lista de anos como inteiros: [2020, 2021, 2022, ...]
 
 
 # Baixar arquivo de operadoras e retornar caminho temporário
@@ -202,15 +149,18 @@ def baixar_operadoras(url: str) -> str:
         raise
 
     # Salvar o conteúdo em um arquivo temporário
+    # pois pode ser grande e não queremos manter na memória
+    # Usar delete=False para manter o arquivo após fechar, mas lembrar de deletar depois
     with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmpfile:
         tmpfile.write(resp_operadoras.content)
 
         # Debug
         print(f"Arquivo de operadoras baixado para: {tmpfile.name}")
-        return tmpfile.name
+        return tmpfile.name # Formato (exemplo): C:\Users\moonpie\AppData\Local\Temp\tmpabcd1234.csv
 
 
-# Ler arquivo de despesas de acordo com seu formato
+# Ler arquivo de despesas de acordo com a chave 'DESCRICAO' e retornar DataFrame filtrado
+# A despesa é calculada como VL_SALDO_FINAL - VL_SALDO_INICIAL, em cada linha
 def ler_despesas(caminho_arquivo: str) -> pd.DataFrame:
     """
     Lê arquivo de despesas e retorna DataFrame filtrado.
@@ -226,15 +176,18 @@ def ler_despesas(caminho_arquivo: str) -> pd.DataFrame:
     try:
         if caminho_arquivo.endswith('.csv'):
             df = pd.read_csv(caminho_arquivo, encoding='latin1', sep=';')
+        
+        # Não encontrei nenhum arquivo .txt, então vou assumir que é tabulado
         elif caminho_arquivo.endswith('.txt'):
             df = pd.read_csv(caminho_arquivo, encoding='latin1', sep='\t')
+
         elif caminho_arquivo.endswith('.xlsx'):
             df = pd.read_excel(caminho_arquivo)
         else:
             raise ValueError(f"Formato de arquivo não suportado: {caminho_arquivo}")
 
-        # Filtrar despesas: excluir linhas com 'Despesas com Eventos / Sinistros'
-        df_filtered = df[df['DESCRICAO'] != 'Despesas com Eventos / Sinistros'].copy()
+        # Filtrar despesas: manter APENAS linhas com 'Despesas com Eventos / Sinistros'
+        df_filtered = df[df['DESCRICAO'] == 'Despesas com Eventos / Sinistros'].copy()
 
         # Converter colunas de valores monetários para numérico
         for col in ['VL_SALDO_FINAL', 'VL_SALDO_INICIAL']:
@@ -272,18 +225,14 @@ def correlacionar_dados(df_despesas: pd.DataFrame, df_operadoras: pd.DataFrame) 
     """
     Faz merge entre despesas e informações de operadoras.
     Args:
-        df_despesas: DataFrame com dados de despesas (coluna de ID da operadora)
-        df_operadoras: DataFrame com dados de operadoras (ID, CNPJ, Razao_Social)
+        df_despesas: DataFrame com dados de despesas (coluna de registro ANS da operadora)
+        df_operadoras: DataFrame com dados de operadoras (coluna de registro ANS, CNPJ, Razao_Social)
     Returns:
         Lista de dicionários com despesas correlacionadas
 
     """
     resultados = []
-
-    # MUDANÇA 1: Busca dinâmica por coluna de registro ANS em despesas
-    # MOTIVO: Diferentes fontes usam nomes diferentes (REG_ANS, REGISTRO_OPERADORA, etc)
-    # ANTES: coluna_reg_ans = 'REG_ANS' (hardcoded, falhava com outros nomes)
-    # DEPOIS: Tenta múltiplos nomes até encontrar um válido
+    # Identificar a coluna correta de registro ANS em despesas
     coluna_reg_ans_despesas = None
     possiveis_nomes_despesas = ['REGISTRO_OPERADORA', 'REG_ANS', 'CD_REGISTRO_ANS', 'REGISTRO_ANS', 'CD_REG_ANS']
 
@@ -308,7 +257,7 @@ def correlacionar_dados(df_despesas: pd.DataFrame, df_operadoras: pd.DataFrame) 
             break
 
     if not coluna_reg_ans_operadoras:
-        print(f"AVISO: Nenhuma coluna de registro ANS encontrada em operadoras. Colunas disponíveis: {df_operadoras.columns.tolist()}")
+        print(f"⚠️  AVISO: Nenhuma coluna de registro ANS encontrada em operadoras. Colunas disponíveis: {df_operadoras.columns.tolist()}")
         return []
 
     # O mesmo para CNPJ e Razão Social, apesar de que esses nomes são mais padronizados nos arquivos que abri manualmente
@@ -316,9 +265,11 @@ def correlacionar_dados(df_despesas: pd.DataFrame, df_operadoras: pd.DataFrame) 
     coluna_razao = 'Razao_Social' if 'Razao_Social' in df_operadoras.columns else 'NM_RAZAO_SOCIAL' if 'NM_RAZAO_SOCIAL' in df_operadoras.columns else None
 
     if not coluna_cnpj or not coluna_razao:
-        print(f"AVISO: Colunas CNPJ ou Razão Social não encontradas. Colunas disponíveis: {df_operadoras.columns.tolist()}")
+        # Desvantagem: Pode ser nessário atualizar o código se novos nomes forem encontrados, ele não faz isso dinamicamente
+        print(f"⚠️  AVISO: Colunas CNPJ ou Razão Social não encontradas. Colunas disponíveis: {df_operadoras.columns.tolist()}")
         return []
 
+    # Debug
     print(f"Usando colunas: despesas['{coluna_reg_ans_despesas}'] <-> operadoras['{coluna_reg_ans_operadoras}']")
     print(f"CNPJ: '{coluna_cnpj}', Razão Social: '{coluna_razao}'")
 
@@ -327,13 +278,10 @@ def correlacionar_dados(df_despesas: pd.DataFrame, df_operadoras: pd.DataFrame) 
         df_operadoras[[coluna_reg_ans_operadoras, coluna_cnpj, coluna_razao]],
         left_on=coluna_reg_ans_despesas,
         right_on=coluna_reg_ans_operadoras,
-        how='inner'
+        how='inner' # Inner join para manter apenas correspondências
     )
 
-    # TODO OTIMIZAÇÃO: Usar .to_dict('records') em vez de iterrows()
-    # MOTIVO: iterrows() é MUITO lento (O(n²)), .to_dict() é vetorizado e muito mais rápido
-    # ANTES: for _, row in df_merged.iterrows(): ... (670k iterações = lento!)
-    # DEPOIS: Converte em lista de dicts diretamente (operação C, super rápida)
+    # Selecionar colunas relevantes para o resultado final
     df_resultado = df_merged[[coluna_reg_ans_operadoras, coluna_cnpj, coluna_razao, 'DESPESA']].copy()
     df_resultado.columns = ['reg_ans', 'CNPJ', 'RazaoSocial', 'ValorDespesas']
     resultados = df_resultado.to_dict('records')
@@ -344,12 +292,13 @@ def correlacionar_dados(df_despesas: pd.DataFrame, df_operadoras: pd.DataFrame) 
     return resultados
 
 
-# Função principal: correlacionar despesas com operadoras
-def correlacionar_despesas_com_operadoras(caminho_arquivo: str, df_operadoras: pd.DataFrame, trimestre: int = None, ano: int = None) -> list[dict]:
+# Função para correlacionar despesas com operadoras
+# Retorna a lista de dicionários com os resultados que incluem trimestre e ano se fornecidos, além das despesas correlacionadas
+def correlacionar_despesas_com_operadoras(caminho_arquivo_despesas: str, df_operadoras: pd.DataFrame, trimestre: int = None, ano: int = None) -> list[dict]:
     """
     Processa arquivo de despesas e correlaciona com informações de operadoras.
     Args:
-        caminho_arquivo: Caminho do arquivo de despesas (CSV, TXT ou XLSX)
+        caminho_arquivo_despesas: Caminho do arquivo de despesas (CSV, TXT ou XLSX)
         df_operadoras: DataFrame com dados de operadoras (já carregado)
         trimestre: Número do trimestre (1-4)
         ano: Ano dos dados
@@ -358,9 +307,8 @@ def correlacionar_despesas_com_operadoras(caminho_arquivo: str, df_operadoras: p
     """
     try:
         # Ler despesas
-        df_despesas = ler_despesas(caminho_arquivo)
-
-        # Correlacionar dados
+        df_despesas = ler_despesas(caminho_arquivo_despesas)
+        # Correlacionar dados, fazendo um merge entre despesas e operadoras
         resultados = correlacionar_dados(df_despesas, df_operadoras)
         
         # Adicionar informações de trimestre e ano se fornecidas
@@ -391,15 +339,18 @@ def extrair_e_processar_zip(url_zip, df_operadoras: pd.DataFrame) -> list[dict]:
 
     todos_resultados = []
 
+    # Usar TemporaryDirectory para garantir limpeza automática dos arquivos extraídos
     with tempfile.TemporaryDirectory() as tmpdir:
         caminho_do_zip = os.path.join(tmpdir, "arquivo.zip")
 
+        # Baixar o arquivo zip
         with requests.get(url_zip, stream=True) as r:
             r.raise_for_status()
             with open(caminho_do_zip, "wb") as f:
                 for chunk in r.iter_content(8192):
                     f.write(chunk)
 
+        # Extrair o conteúdo do zip
         with zipfile.ZipFile(caminho_do_zip, "r") as z:
             z.extractall(tmpdir)
 
@@ -410,7 +361,7 @@ def extrair_e_processar_zip(url_zip, df_operadoras: pd.DataFrame) -> list[dict]:
             for file in files:
                 if file.endswith((".csv", ".txt", ".xlsx")):
                     caminho = os.path.join(root, file)
-                    print("Processando:", caminho)
+                    print("Processando:", caminho)      # Detalhe: apesar do loop aninhado, complexidade é O(arquivos x linhas), não O(n²)
 
                     # Processar arquivo enquanto ainda existe (dentro do contexto 'with')
                     resultados = correlacionar_despesas_com_operadoras(caminho, df_operadoras)
@@ -436,12 +387,14 @@ def salvar_cnpjs_duplicados(dados_processados: list[dict], caminho_saida: str):
         if not duplicados.empty:
             resultados = []
 
+            # Para cada CNPJ duplicado, listar as diferentes razões sociais e seus valores de despesas
             for cnpj, grupo in duplicados.groupby('CNPJ'):
                 razoes = grupo['RazaoSocial'].unique()
                 despesas = grupo['ValorDespesas'].values
                 anos = grupo['Ano'].values
                 trimestres = grupo['Trimestre'].values
 
+                # Gerar combinações de razões sociais diferentes
                 for i in range(len(razoes)):
                     for j in range(i + 1, len(razoes)):
                         resultados.append({
@@ -458,13 +411,13 @@ def salvar_cnpjs_duplicados(dados_processados: list[dict], caminho_saida: str):
             df_duplicados.to_csv(caminho_saida, index=False, encoding='utf-8-sig', sep=';', decimal=',')
             print(f"CNPJs duplicados salvos em: {caminho_saida}")
         else:
-            print("Nenhum CNPJ duplicado encontrado.")
+            print("⚠️  AVISO: Nenhum CNPJ duplicado encontrado.")
 
     except Exception as e:
         print(f"Erro ao salvar CNPJs duplicados: {e}")
 
 # Criar uma função para consolidar os dados processados dos últimos 3 trimestres em um único arquivo CSV
-# A função deve se certificar de que o arquivo CSV terá apenas as colunas: CNPJ , RazaoSocial , Trimestre , Ano , ValorDespesas
+# A função deve se certificar de que o arquivo CSV terá apenas as colunas: CNPJ , RazaoSocial , Trimestre , Ano , ValorDespesas, MediaTrimestral
 def consolidar_dados_em_csv(dados_processados: list[dict], caminho_saida: str):
     """
     Consolida os dados processados em um único arquivo CSV.
@@ -497,15 +450,31 @@ def consolidar_dados_em_csv(dados_processados: list[dict], caminho_saida: str):
             if 'ValorDespesas' in df_consolidado.columns:
                 df_consolidado['ValorDespesas'] = df_consolidado['ValorDespesas'].astype(float).round(2)
             
-            # Agrupar por CNPJ, RazaoSocial, Trimestre e Ano, somando as despesas
-            # Isso garante que se uma empresa teve múltiplas despesas no mesmo trimestre,
-            # teremos apenas uma linha com o total agregado
+            # Agrupar por CNPJ, RazaoSocial, Trimestre e Ano, calculando soma e média das despesas
+            # A soma é o total do trimestre, a média é a média das despesas individuais daquele trimestre
             df_consolidado = df_consolidado.groupby(['CNPJ', 'RazaoSocial', 'Trimestre', 'Ano'], as_index=False).agg({
-                'ValorDespesas': 'sum'
+                'ValorDespesas': ['sum', 'mean']
             })
             
-            # Arredondar novamente após a soma
+            # Achatar as colunas multi-nível resultantes do agg
+            df_consolidado.columns = ['CNPJ', 'RazaoSocial', 'Trimestre', 'Ano', 'ValorDespesas', 'MediaTrimestral']
+            
+            # Arredondar para 2 casas decimais
             df_consolidado['ValorDespesas'] = df_consolidado['ValorDespesas'].astype(float).round(2)
+            df_consolidado['MediaTrimestral'] = df_consolidado['MediaTrimestral'].astype(float).round(2)
+            
+            # Calcular desvio padrão das despesas entre trimestres (para análise de variabilidade)
+            df_desvio = df_consolidado.groupby(['CNPJ', 'RazaoSocial'], as_index=False).agg({
+                'ValorDespesas': 'std'
+            }).rename(columns={'ValorDespesas': 'DesvioPadrao'})
+            
+            # Arredondar para 2 casas decimais
+            df_desvio['DesvioPadrao'] = df_desvio['DesvioPadrao'].round(2)
+            
+            # Salvar desvio padrão em arquivo separado para análise de variabilidade
+            caminho_desvio = caminho_saida.replace('.csv', '_desvio_padrao.csv')
+            df_desvio.to_csv(caminho_desvio, index=False, encoding='utf-8-sig', sep=';', decimal=',')
+            print(f"Desvio padrão por operadora salvo em: {caminho_desvio}")
             
             # Aproveitar para criar o CSV com CNPJs duplicados com razões sociais diferentes
             salvar_cnpjs_duplicados(dados_processados, caminho_saida.replace('.csv', '_cnpjs_duplicados.csv'))
@@ -513,7 +482,7 @@ def consolidar_dados_em_csv(dados_processados: list[dict], caminho_saida: str):
             df_consolidado.to_csv(caminho_saida, index=False, encoding='utf-8-sig', sep=';', decimal=',')
             print(f"Dados consolidados salvos em: {caminho_saida}")
         else:
-            print("Nenhum dado para consolidar.")
+            print("⚠️  AVISO: Nenhum dado para consolidar.")
 
     except KeyError as e:
         print(f"Erro ao consolidar dados em CSV: Coluna não encontrada - {e}")
@@ -583,8 +552,7 @@ def salvar_operadoras_duplicadas_com_inconsistencias(df_operadoras: pd.DataFrame
             # Criar linha com informações do CNPJ e marcação de inconsistências
             registro = {'CNPJ': cnpj}
             
-            # OTIMIZAÇÃO: Converter para lista de dicts uma vez em vez de usar iterrows()
-            # iterrows() é O(n²), enquanto to_dict('records') é O(n)
+            # Usar to_dict para facilitar o acesso aos valores (complexidade O(n))
             grupo_records = grupo.to_dict('records')
             
             # Adicionar todos os dados dos registros duplicados
@@ -611,7 +579,7 @@ def salvar_operadoras_duplicadas_com_inconsistencias(df_operadoras: pd.DataFrame
         print(f"Total de CNPJs com inconsistências detectadas: {len(inconsistencias)}")
         print(f"Operadoras com inconsistências salvas em: {caminho_saida}")
     else:
-        print("Nenhuma inconsistência de dados encontrada (apenas duplicações com dados idênticos).")
+        print("⚠️  AVISO: Nenhuma inconsistência de dados encontrada (apenas duplicações com dados idênticos).")
     
     total_cnpjs_duplicados = cnpjs_duplicados['CNPJ'].nunique()
     return {
