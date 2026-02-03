@@ -1,6 +1,6 @@
 # Análise de Despesas de Operadoras de Plano de Saúde
 
-**Autor**: moonpie  
+**Autor**: Álison Caique  
 **Data**: Fevereiro 2026  
 **Propósito**: Teste técnico para vaga de estágio
 
