@@ -292,10 +292,6 @@ Em healthtech dados inconsistentes viram erro regulatório. Séria atenção aqu
 - Arredondamento elimina artefatos de precisão flutuante
 - Aplicado após conversão e após agregações
 
-# Arredonda após agregação
-df_consolidado['ValorDespesas'] = df_consolidado['ValorDespesas'].round(2)
-```
-
 ### 4. Estratégia de Join
 
 **Problema**: Correlacionar despesas (por REG_ANS) com operadoras (CNPJ + cadastro).
