@@ -128,12 +128,6 @@ contabil-cli/
 
 **Por que não usar `delete=True`?** Porque o arquivo seria deletado antes de conseguir ler. Com `delete=False`, controlo quando deletar.
 
-```python
-caminho = baixar_operadoras(url)
-df = pd.read_csv(caminho)
-os.unlink(caminho)  # Limpeza manual
-```
-
 ### 5. Como funciona a agregação de dados?
 
 **Problema**: Uma operadora pode ter múltiplas linhas de despesas no mesmo trimestre.
@@ -188,18 +182,6 @@ CNPJ | Trimestre | ValorDespesas | MediaTrimestral
 
 **Solução**: Movi o processamento **para dentro** do bloco `with`.
 
-```python
-with tempfile.TemporaryDirectory() as tmpdir:
-    # Baixar e extrair
-    z.extractall(tmpdir)
-    
-    # PROCESSAR AQUI (enquanto arquivos existem)
-    for file in os.walk(tmpdir):
-        resultados = processar(file)
-    
-    # Arquivos são deletados automaticamente aqui
-```
-
 ### Problema 3: CNPJs duplicados com dados diferentes
 
 **Erro**: Mesmo CNPJ aparecia com múltiplas razões sociais.
@@ -249,28 +231,6 @@ with tempfile.TemporaryDirectory() as tmpdir:
 - ✅ Testes com diferentes formatos (CSV, XLSX), não encontrei um arquivo TXT
 - ✅ Verificação de arquivos gerados (todos os CSVs esperados foram criados)
 
-**Não implementei**:
-- Testes unitários
-- Testes de carga com volumes massivos
-- Testes de integração com CI/CD
-- Criação de banco de dados
-- Criação de interface web
-
-## Referências
-
-- [Dados Abertos ANS](https://dadosabertos.ans.gov.br/)
-- [Algoritmo de validação de CNPJ](https://www.receita.fazenda.gov.br/)
-- [Documentação Pandas](https://pandas.pydata.org/docs/)
-
----
-
-**Nota**: Este projeto foi desenvolvido como teste técnico para vaga de estágio. O foco foi em código limpo, documentação clara e decisões bem justificadas, não em performance máxima ou features avançadas.
-elif caminho_arquivo.endswith('.txt'):
-    df = pd.read_csv(caminho_arquivo, encoding='latin1', sep='\t')
-elif caminho_arquivo.endswith('.xlsx'):
-    df = pd.read_excel(caminho_arquivo)
-```
-
 **Benefícios**:
 - ✅ Sistema continua funcionando mesmo com mudanças na nomenclatura da ANS
 - ✅ Mensagens de debug mostram colunas disponíveis quando algo falha
@@ -285,20 +245,6 @@ elif caminho_arquivo.endswith('.xlsx'):
 - CNPJs inválidos indicam problemas na qualidade dos dados da fonte
 - Manter inválidos no arquivo principal polui análises
 - Arquivo separado permite auditoria e correção manual
-
-**Implementação**:
-```python
-def validar_cnpj(cnpj: str) -> bool:
-    # Remove caracteres não numéricos
-    cnpj_numeros = re.sub(r'\D', '', str(cnpj))
-    
-    # Verifica 14 dígitos
-    if len(cnpj_numeros) != 14:
-        return False
-    
-    # Calcula dígitos verificadores (módulo 11)
-    # ... algoritmo completo no código
-```
 
 **Resultados**:
 - `cnpjs_invalidos.csv`: CNPJs que falharam na validação
@@ -316,12 +262,6 @@ def validar_cnpj(cnpj: str) -> bool:
 - Remover seria perda de informação
 - Relatório separado permite investigação manual
 
-**Implementação**:
-```python
-# Agrupa por CNPJ e verifica se há razões sociais únicas > 1
-duplicados = df.groupby('CNPJ').filter(lambda x: x['RazaoSocial'].nunique() > 1)
-```
-
 **Resultados**:
 - `cnpjs_duplicados.csv`: Pares de razões sociais diferentes para o mesmo CNPJ
 
@@ -337,15 +277,6 @@ Em healthtech dados inconsistentes viram erro regulatório. Séria atenção aqu
 - Usar `keep='first'` é determinístico e previsível
 - Relatório de inconsistências permite correção na fonte
 
-**Implementação**:
-```python
-# Detecta e salva inconsistências
-salvar_operadoras_duplicadas_com_inconsistencias(df_operadoras, caminho)
-
-# Remove duplicatas antes do join
-df_operadoras_unicas = df_operadoras.drop_duplicates(subset=['CNPJ'], keep='first')
-```
-
 **Resultados**:
 - `operadoras_inconsistencias.csv`: CNPJs com dados conflitantes no cadastro
 - Colunas marcadas com `[INCONSISTENTE]` para fácil identificação
@@ -360,14 +291,6 @@ df_operadoras_unicas = df_operadoras.drop_duplicates(subset=['CNPJ'], keep='firs
 - Valores monetários no Brasil usam 2 casas decimais
 - Arredondamento elimina artefatos de precisão flutuante
 - Aplicado após conversão e após agregações
-
-**Implementação**:
-```python
-# Converte e arredonda
-df_filtered[col] = pd.to_numeric(
-    df_filtered[col].astype(str).str.replace(',', '.'),
-    errors='coerce'
-).round(2)
 
 # Arredonda após agregação
 df_consolidado['ValorDespesas'] = df_consolidado['ValorDespesas'].round(2)
@@ -398,31 +321,6 @@ df_consolidado['ValorDespesas'] = df_consolidado['ValorDespesas'].round(2)
 - Segundo join é por CNPJ (chave única após consolidação)
 - Separação mantém integridade referencial e evita duplicatas
 
-**Implementação**:
-```python
-# Etapa 1: Despesas → Operadoras (inner join por REG_ANS)
-df_merged = df_despesas.merge(
-    df_operadoras[[coluna_reg_ans_operadoras, coluna_cnpj, coluna_razao]],
-    left_on=coluna_reg_ans_despesas,
-    right_on=coluna_reg_ans_operadoras,
-    how='inner'
-)
-
-# Etapa 2: Consolidado → Operadoras (left join por CNPJ)
-df_resultado = df_dados.merge(
-    df_operadoras_filtradas,
-    on='CNPJ',
-    how='left'
-)
-```
-
-**Validação**:
-```python
-# Verificação simples para detectar efeitos colaterais inesperados durante o join
-if num_linhas_resultado != num_linhas_original:
-    raise ValueError(f"Join produziu {num_linhas_resultado} linhas em vez de {num_linhas_original}")
-```
-
 ### 5. Consolidação e Agregação
 
 **Problema**: Empresas podem ter múltiplas despesas no mesmo trimestre (diferentes tipos de despesa).
@@ -434,16 +332,6 @@ if num_linhas_resultado != num_linhas_original:
 - Soma de despesas mantém total correto
 - Agregação no final (após validação) garante dados limpos
 
-**Implementação**:
-```python
-df_consolidado = df_consolidado.groupby(
-    ['CNPJ', 'RazaoSocial', 'Trimestre', 'Ano'], 
-    as_index=False
-).agg({
-    'ValorDespesas': 'sum'
-})
-```
-
 ### 6. Otimizações de Performance
 
 #### 6.1 Substituição de iterrows() por to_dict('records')
@@ -451,18 +339,6 @@ df_consolidado = df_consolidado.groupby(
 **Problema**: iterrows() tem overhead elevado em DataFrames grandes.
 
 **Decisão**: Optei por uma abordagem vetorizada com .to_dict('records'), mais adequada ao volume de dados esperado.
-
-**Implementação**:
-```python
-# ANTES (lento)
-for _, row in df_merged.iterrows():
-    resultados.append({...})
-
-# DEPOIS (rápido)
-df_resultado = df_merged[['col1', 'col2', ...]].copy()
-df_resultado.columns = ['new1', 'new2', ...]
-resultados = df_resultado.to_dict('records')
-```
 
 #### 6.2 Download de Operadoras Uma Única Vez
 
@@ -475,16 +351,6 @@ resultados = df_resultado.to_dict('records')
 - Reduz tráfego de rede e tempo de execução
 - Memória usada: ~50MB (aceitável para 3 trimestres)
 
-**Implementação**:
-```python
-# Baixar operadoras UMA VEZ antes do loop
-df_operadoras = pd.read_csv(caminho_operadoras, encoding='latin1', sep=';')
-
-# Reusar em todos os trimestres
-for arquivo in arquivos_trimestres:
-    resultados = extrair_e_processar_zip(url_arquivo, df_operadoras)
-```
-
 ### 7. Padrões Brasileiros
 
 **Decisão**: Usar **separador `;` e decimal `,`** em todos os CSVs.
@@ -494,17 +360,6 @@ for arquivo in arquivos_trimestres:
 - Compatibilidade com Excel em português
 - Facilita abertura direta por usuários finais
 - Encoding `utf-8-sig` para BOM (abre corretamente no Excel)
-
-**Implementação**:
-```python
-df.to_csv(
-    caminho_saida, 
-    index=False, 
-    encoding='utf-8-sig',  # BOM para Excel
-    sep=';',               # Separador brasileiro
-    decimal=','            # Decimal brasileiro
-)
-```
 
 ### 8. Débito Técnico Consciente: Responsabilidades da Função `consolidar_dados_em_csv()`
 
@@ -596,15 +451,22 @@ O sistema implementa múltiplas camadas de validação:
 - ✅ Mensagens de debug detalhadas em cada etapa
 
 ---
-Os testes de **Banco de Dados e Análise** e **API e Interface Web** não foram implementados nesta entrega.
-
-A decisão foi consciente e técnica: optei por não desenvolver soluções em áreas nas quais ainda não possuo base prática suficiente para garantir um resultado correto, sustentável e defensável em uma possível avaliação técnica.
+Nota: A não implementação de **Banco de Dados e Análise** e **API e Interface Web** foi uma decisão consciente e técnica: optei por não desenvolver soluções em áreas nas quais ainda não possuo base prática suficiente 
+para garantir um resultado correto, sustentável e defensável em uma possível avaliação técnica.
 
 Ainda assim, o projeto foi estruturado de forma a permitir evolução natural, com separação clara de responsabilidades, funções puras e pontos de integração bem definidos, o que viabilizaria: 
-persistência dos dados consolidados em um banco relacional (ex.: PostgreSQL), exposição dos dados finais via API REST, e posterior consumo por uma interface web.
+- Persistência dos dados consolidados em um banco relacional (ex.: PostgreSQL)
+- Exposição dos dados finais via API REST
+- Posterior consumo por uma interface web.
 
 O foco desta entrega foi garantir uma base sólida de coleta, normalização e consolidação de dados públicos da ANS, priorizando qualidade de dados, rastreabilidade, tratamento de inconsistências reais e clareza de código e documentação.
 
 ---
 
-**Dados fornecidos por**: [ANS - Agência Nacional de Saúde Suplementar](https://dadosabertos.ans.gov.br/)
+## Referências
+
+- [Dados Abertos ANS](https://dadosabertos.ans.gov.br/)
+- [Algoritmo de validação de CNPJ](https://www.receita.fazenda.gov.br/)
+- [Documentação Pandas](https://pandas.pydata.org/docs/)
+
+---
